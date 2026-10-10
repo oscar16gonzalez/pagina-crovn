@@ -16,7 +16,7 @@ Para que el CI/CD funcione (GitHub Actions → Vercel), configura estos **Secret
 | Secreto | Valor |
 |---|---|
 | `VERCEL_PROJECT_ID_BACKEND` | `prj_i832qpBCQqxVZKjVAFG3agfGVRlN` |
-| `DATABASE_URL` | `postgresql://neondb_owner:npg_l3jxZESN7cBq@ep-lingering-thunder-b4ng7rzx.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require` |
+| `DATABASE_URL` | `postgres://avnadmin:***REDACTED***@pg-3a346d5d-crovn0315-8b4a.l.aivencloud.com:14721/defaultdb?sslmode=require` |
 | `SMTP_HOST` | `smtp.gmail.com` |
 | `SMTP_PORT` | `587` |
 | `SMTP_USER` | `crovn0315@gmail.com` |

@@ -4,12 +4,12 @@ Sistema completo para una tienda de ropa urbana colombiana: **landing pública**
 
 <div align="center">
 
-**Stack:** React 18 + Vite + Tailwind · Express + Prisma + PostgreSQL (Neon) · Nodemailer · WhatsApp Cloud API
+**Stack:** React 18 + Vite + Tailwind · Express + Prisma + PostgreSQL (Aiven) · Nodemailer · WhatsApp Cloud API
 
 🌐 **En vivo (gratis):**
 <br>🛍️ Tienda: **https://crovn-frontend.vercel.app**
 <br>⚙️ API: **https://crovn-backend.vercel.app**
-<br>🗄️ DB: **Neon PostgreSQL** (tier gratuito)
+<br>🗄️ DB: **Aiven PostgreSQL** (tier gratuito)
 
 </div>
 
@@ -23,7 +23,7 @@ La app está desplegada 100% gratis:
 |---|---|---|---|
 | Frontend (React/Vite estático) | **Vercel** | https://crovn-frontend.vercel.app | Gratis (Hobby) |
 | Backend (Express/Node) | **Vercel** | https://crovn-backend.vercel.app | Gratis (Hobby) |
-| Base de datos PostgreSQL | **Neon** | ep-lingering-thunder... | Gratis (Free tier) |
+| Base de datos PostgreSQL | **Aiven** | pg-3a346d5d... | Gratis (Free tier) |
 
 ### CI/CD (GitHub Actions)
 Cada push a `master` despliega automáticamente a producción:
@@ -56,12 +56,12 @@ vercel --prod
 
 ### Variables de entorno en Vercel
 Ya están configuradas en el proyecto Vercel (production):
-- `DATABASE_URL` → conexión Neon PostgreSQL
+- `DATABASE_URL` → conexión Aiven PostgreSQL
 - `SMTP_*` → correo de confirmación
 - `VITE_API_URL` → `https://crovn-backend.vercel.app` (frontend)
 
 ### DB local vs nube
-- **Nube (Neon):** PostgreSQL, `DATABASE_URL` en `.env.production`
+- **Nube (Aiven):** PostgreSQL, `DATABASE_URL` en `.env.production`
 - **Local (PostgreSQL Docker):** contenedor `postgres-local`, `DATABASE_URL="postgresql://crovn:crovn123@localhost:5432/crovn"`
 
 ---
@@ -138,7 +138,7 @@ Ya están configuradas en el proyecto Vercel (production):
 
 - **Frontend**: React + Vite + Tailwind. Proxy `/api` → `http://localhost:4000`. Enrutamiento por hash (`#/tienda`, `#/consulta`, `#/admin`).
 - **Backend**: Express + Prisma. Tokens HMAC firmados (no JWT). Imágenes como Base64 en `TEXT`.
-- **DB**: PostgreSQL (Neon en la nube / Docker `postgres-local` en local).
+- **DB**: PostgreSQL (Aiven en la nube / Docker `postgres-local` en local).
 
 ---
 
@@ -206,7 +206,7 @@ WHATSAPP_BUSINESS_NUMBER=3128502119
 WHATSAPP_COUNTRY=57
 ```
 
-> **Producción (Neon):** usa `DATABASE_URL` de Neon (ver `.env.production`).
+> **Producción (Aiven):** usa `DATABASE_URL` de Aiven (ver `.env.production`).
 
 ### 4. Sincronizar la base de datos (Prisma migrations)
 
@@ -248,9 +248,9 @@ npm run dev        # Vite → http://localhost:5173 (proxy /api → :4000)
 
 Solo cambia `DATABASE_URL` en `backend/.env`:
 - **Local:** `postgresql://crovn:crovn123@localhost:5432/crovn`
-- **Producción (Neon):** `postgresql://neondb_owner:...@ep-...aws.neon.tech/neondb?sslmode=require`
+- **Producción (Aiven):** `postgresql://avnadmin:...@pg-...aivencloud.com/defaultdb?sslmode=require`
 
-> ⚠️ **Ojo:** si apuntas a Neon, los cambios locales afectan la DB de producción.
+> ⚠️ **Ojo:** si apuntas a Aiven, los cambios locales afectan la DB de producción.
 npm run dev        # Vite dev server en :5173
 ```
 
@@ -272,8 +272,8 @@ Copia `backend/.env.example` a `backend/.env` y ajusta:
 # Base de datos
 # Local (PostgreSQL Docker "postgres-local"):
 DATABASE_URL="postgresql://crovn:crovn123@localhost:5432/crovn"
-# Nube (Neon PostgreSQL, despliegue):
-# DATABASE_URL="postgresql://usuario:pass@ep-xxx.aws.neon.tech/neondb?sslmode=require"
+# Nube (Aiven PostgreSQL, despliegue):
+# DATABASE_URL="postgresql://avnadmin:pass@pg-xxx.aivencloud.com/defaultdb?sslmode=require"
 
 # Puerto del servidor
 PORT=4000
@@ -410,19 +410,19 @@ cd backend
 npx prisma migrate dev --name describe_tu_cambio
 # Ejemplo: npx prisma migrate dev --name add_product_brand
 
-# 3. Commit + push (la CI/CD aplica la migration a Neon automáticamente)
+# 3. Commit + push (la CI/CD aplica la migration a Aiven automáticamente)
 git add -A
 git commit -m "feat: agregar campo brand a Product"
 git push origin master
 ```
 
-### ¿Qué sucede en producción (Neon)?
+### ¿Qué sucede en producción (Aiven)?
 
 ```
 Push a master
    │
    ├──▶ check   (prisma validate)
-   ├──▶ migrate (prisma migrate deploy → aplica la migration a Neon)  ← NUEVO
+   ├──▶ migrate (prisma migrate deploy → aplica la migration a Aiven)  ← NUEVO
    └──▶ deploy  (vercel deploy --prod)
 ```
 
