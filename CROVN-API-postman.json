@@ -1,0 +1,943 @@
+{
+	"info": {
+		"_postman_id": "crovn-api-collection",
+		"name": "CROVN API - Tienda de Ropa",
+		"description": "## 🛍️ CROVN API\n\nAPI completa para tienda de ropa colombiana (Crovn) con panel de administración.\n\n### 📋 Características\n- **Landing pública**: catálogo, carrito, checkout, consulta de pedidos\n- **Admin**: login, inventario (productos + variantes), clientes, pedidos, promociones, publicaciones, proveedores\n- **Pagos**: descuentos por código promocional y ofertas\n- **Email**: confirmaciones de pedido y cambios de estado (nodemailer)\n- **WhatsApp**: enlace directo wa.me\n\n### 🔑 Autenticación\nLos endpoints de admin requieren header `Authorization: Bearer <token>`. Obtén el token en `POST /api/auth/login`.\n\n### 📦 Base URL\n`http://localhost:4000`\n\n### 👤 Credenciales de prueba\n- **Superadmin**: `oscar` / `12345`\n- **Admin**: `johana` / `12345`\n\n### 💰 Moneda\nPesos colombianos (COP), locale `es-CO`\n\n### 📝 Notas\n- Las imágenes se envían como `multipart/form-data` (campos `image`, `images[]`) y se almacenan como Base64 en MySQL\n- Los productos tienen variantes (tallas × colores), cada una con stock y SKU propios\n- Los proveedores tienen costos/porcentajes individuales por producto",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "🔐 Auth",
+			"description": "Autenticación de administradores. Login, sesión actual y cambio de contraseña.",
+			"item": [
+				{
+					"name": "Login (obtener token)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Guarda el token automáticamente en la variable 'token'",
+									"const json = pm.response.json();",
+									"if (json?.data?.token) {",
+									"    pm.collectionVariables.set('token', json.data.token);",
+									"    console.log('Token guardado en variable: token');",
+									"} else {",
+									"    console.log('No se encontró token en la respuesta');",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"oscar\",\n  \"password\": \"12345\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "login"]
+						},
+						"description": "Inicia sesión y retorna un token HMAC (válido 12h). Úsalo en `Authorization: Bearer <token>` para endpoints protegidos.\n\n**Credenciales:**\n- oscar / 12345 (superadmin)\n- johana / 12345 (admin)\n\n**Automático:** El test guarda el token en la variable `token` de la colección."
+					},
+					"response": []
+				},
+				{
+					"name": "Mi sesión (requiere auth)",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/me",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "me"]
+						},
+						"description": "Retorna el admin actualmente autenticado (id, username, name, role)."
+					},
+					"response": []
+				},
+				{
+					"name": "Cambiar contraseña (requiere auth)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"currentPassword\": \"12345\",\n  \"newPassword\": \"nueva123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/change-password",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "change-password"]
+						},
+						"description": "Cambia la contraseña del admin autenticado."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🛍️ Shop (público)",
+			"description": "Endpoints públicos para la landing: catálogo, checkout, consulta de pedidos. **No requieren autenticación.**",
+			"item": [
+				{
+					"name": "Catálogo completo (landing)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/shop",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "shop"]
+						},
+						"description": "Retorna todo lo que necesita la landing: productos activos, publicaciones activas, configuración."
+					},
+					"response": []
+				},
+				{
+					"name": "Productos (con filtros)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/shop/products?category=Camisetas&size=M&q=qatar&lowStock=false",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "shop", "products"],
+							"query": [
+								{"key": "category", "value": "Camisetas", "description": "Filtrar por categoría"},
+								{"key": "size", "value": "M", "description": "Filtrar por talla"},
+								{"key": "q", "value": "qatar", "description": "Búsqueda por nombre/descripción"},
+								{"key": "lowStock", "value": "false", "description": "true = solo stock ≤ 5"}
+							]
+						},
+						"description": "Lista productos del catálogo con filtros opcionales."
+					},
+					"response": []
+				},
+				{
+					"name": "Checkout (crear pedido)",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"customer\": {\n    \"name\": \"Juan Pérez\",\n    \"email\": \"juan@email.com\",\n    \"phone\": \"3128502119\",\n    \"address\": \"Cra 12 #34-56\"\n  },\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"quantity\": 2,\n      \"size\": \"M\",\n      \"color\": \"Negro\",\n      \"unitPrice\": 35000\n    }\n  ],\n  \"promoCode\": \"CROVN-123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/shop/checkout",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "shop", "checkout"]
+						},
+						"description": "Crea un pedido:\n- Crea/actualiza el cliente\n- Crea la orden con items\n- Descuenta stock de variantes\n- Aplica código promocional (si es válido)\n- Envía email de confirmación al cliente\n\n**Promo code** es opcional. Si el producto tiene oferta activa, el `unitPrice` ya debe incluir el descuento."
+					},
+					"response": []
+				},
+				{
+					"name": "Consultar pedido (email + número)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/shop/orders/lookup?email=juan@email.com&orderId=1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "shop", "orders", "lookup"],
+							"query": [
+								{"key": "email", "value": "juan@email.com", "description": "Email de compra"},
+								{"key": "orderId", "value": "1", "description": "Número de pedido (acepta #1 o 1)"}
+							]
+						},
+						"description": "Consulta pública de pedido por email + número. Retorna el pedido completo con estado, items y totales."
+					},
+					"response": []
+				},
+				{
+					"name": "Historial de pedidos por email",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/shop/orders/by-email?email=juan@email.com",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "shop", "orders", "by-email"],
+							"query": [{"key": "email", "value": "juan@email.com"}]
+						},
+						"description": "Retorna el cliente con todos sus pedidos (unificados por email), incluye badge VIP, conteo de pedidos y total gastado."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "📦 Productos (admin)",
+			"description": "CRUD de inventario con variantes (tallas × colores). **Requiere auth.** Las imágenes se envían como `form-data`.",
+			"item": [
+				{
+					"name": "Listar productos",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/products?category=Camisetas&q=&lowStock=true",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products"],
+							"query": [
+								{"key": "category", "value": "Camisetas"},
+								{"key": "q", "value": "", "description": "Búsqueda por nombre/descripción/SKU"},
+								{"key": "lowStock", "value": "true", "description": "true = stock ≤ 5"}
+							]
+						},
+						"description": "Lista productos del inventario con filtros. Incluye imágenes y variantes."
+					},
+					"response": []
+				},
+				{
+					"name": "Meta (categorías, tallas, colores)",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/products/meta",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products", "meta"]
+						},
+						"description": "Retorna categorías, tallas disponibles, colores y URL base de uploads."
+					},
+					"response": []
+				},
+				{
+					"name": "Detalle de producto",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/products/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products", "1"]
+						},
+						"description": "Retorna un producto con sus imágenes y variantes."
+					},
+					"response": []
+				},
+				{
+					"name": "Crear producto (form-data)",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{"key": "name", "value": "Crovn Tee Black", "type": "text"},
+								{"key": "description", "value": "Camiseta negra 260gr", "type": "text"},
+								{"key": "category", "value": "Camisetas", "type": "text"},
+								{"key": "size", "value": "M", "type": "text", "description": "Talla principal (XS/S/M/L/XL/XXL)"},
+								{"key": "price", "value": "35000", "type": "text"},
+								{"key": "stock", "value": "10", "type": "text"},
+								{"key": "sku", "value": "CRV-TEE-BLK", "type": "text", "description": "Opcional, se genera automático"},
+								{"key": "supplierId", "value": "1", "type": "text", "description": "Opcional, ID del proveedor"},
+								{"key": "costPrice", "value": "20000", "type": "text", "description": "Opcional, val proveedor"},
+								{"key": "profitPct", "value": "50", "type": "text", "description": "Opcional, % ganancia"},
+								{"key": "sizes", "value": "[\"M\",\"L\",\"XL\"]", "type": "text", "description": "JSON array de tallas seleccionadas"},
+								{"key": "colors", "value": "[\"Negro\"]", "type": "text", "description": "JSON array de colores seleccionados"},
+								{"key": "image", "value": "", "type": "file", "description": "Imagen principal (opcional)"},
+								{"key": "images", "value": "", "type": "file", "description": "Imágenes extra (opcional, múltiples)"}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/products",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products"]
+						},
+						"description": "Crea un producto con variantes. Cada combinación talla × color genera una variante con su propio stock y SKU.\n\n**Campos form-data:**\n- `name`, `category`, `size`, `price`, `stock` (obligatorios)\n- `sizes` y `colors` como JSON array (checkbox múltiple)\n- `image` (imagen principal), `images` (extra, múltiples)\n- `supplierId`, `costPrice`, `profitPct` (opcional, para costos)"
+					},
+					"response": []
+				},
+				{
+					"name": "Actualizar producto (form-data)",
+					"request": {
+						"method": "PUT",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{"key": "name", "value": "Crovn Tee Black", "type": "text"},
+								{"key": "description", "value": "Camiseta negra 260gr", "type": "text"},
+								{"key": "category", "value": "Camisetas", "type": "text"},
+								{"key": "size", "value": "M", "type": "text"},
+								{"key": "price", "value": "35000", "type": "text"},
+								{"key": "stock", "value": "10", "type": "text"},
+								{"key": "supplierId", "value": "", "type": "text", "description": "Vacío = quitar proveedor (null)"},
+								{"key": "costPrice", "value": "20000", "type": "text"},
+								{"key": "profitPct", "value": "50", "type": "text"},
+								{"key": "sizes", "value": "[\"M\",\"L\"]", "type": "text"},
+								{"key": "colors", "value": "[\"Negro\"]", "type": "text"},
+								{"key": "image", "value": "", "type": "file"},
+								{"key": "images", "value": "", "type": "file"}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/products/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products", "1"]
+						},
+						"description": "Actualiza producto. **Importante:** envía `supplierId` siempre (vacío = null para desasociar proveedor). Las variantes nuevas se crean automáticamente."
+					},
+					"response": []
+				},
+				{
+					"name": "Eliminar producto",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/products/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products", "1"]
+						},
+						"description": "Elimina un producto y sus variantes/imágenes."
+					},
+					"response": []
+				},
+				{
+					"name": "Ajustar stock",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"type\": \"add\",\n  \"amount\": 10\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/products/1/stock",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products", "1", "stock"]
+						},
+						"description": "Ajusta stock del producto:\n- `type`: `add` (sumar), `subtract` (restar), `set` (fijar)\n- `amount`: cantidad"
+					},
+					"response": []
+				},
+				{
+					"name": "Eliminar imagen extra",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/products/1/images/2",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "products", "1", "images", "2"]
+						},
+						"description": "Elimina una imagen extra del producto (por ID de imagen)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "👥 Clientes (admin)",
+			"description": "CRUD de clientes. **Requiere auth.**",
+			"item": [
+				{
+					"name": "Listar clientes",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/customers?q=juan",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "customers"],
+							"query": [{"key": "q", "value": "juan", "description": "Búsqueda por nombre/email"}]
+						},
+						"description": "Lista clientes con conteo de pedidos y total gastado. Incluye badge VIP."
+					},
+					"response": []
+				},
+				{
+					"name": "Detalle de cliente",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/customers/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "customers", "1"]
+						},
+						"description": "Retorna cliente con sus pedidos."
+					},
+					"response": []
+				},
+				{
+					"name": "Crear cliente",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"María García\",\n  \"email\": \"maria@email.com\",\n  \"phone\": \"3128502119\",\n  \"address\": \"Calle 10 #20-30\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/customers",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "customers"]
+						},
+						"description": "Crea un cliente manualmente."
+					},
+					"response": []
+				},
+				{
+					"name": "Actualizar cliente",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"María García\",\n  \"email\": \"maria@email.com\",\n  \"phone\": \"3128502119\",\n  \"address\": \"Calle 10 #20-30\",\n  \"isVIP\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/customers/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "customers", "1"]
+						},
+						"description": "Actualiza cliente. `isVIP` es solo badge (no da descuento automático)."
+					},
+					"response": []
+				},
+				{
+					"name": "Eliminar cliente",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/customers/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "customers", "1"]
+						},
+						"description": "Elimina cliente (solo si no tiene pedidos)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "📦 Pedidos (admin)",
+			"description": "Gestión de pedidos. **Requiere auth.** Los cambios de estado envían email al cliente.",
+			"item": [
+				{
+					"name": "Listar pedidos",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/orders?status=Pendiente",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "orders"],
+							"query": [{"key": "status", "value": "Pendiente", "description": "Filtrar por estado"}]
+						},
+						"description": "Lista pedidos con filtro por estado (Pendiente/Procesado/Enviado/Entregado)."
+					},
+					"response": []
+				},
+				{
+					"name": "Detalle de pedido",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/orders/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "orders", "1"]
+						},
+						"description": "Retorna pedido con cliente e items."
+					},
+					"response": []
+				},
+				{
+					"name": "Crear pedido (admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"customerId\": 1,\n  \"items\": [\n    {\"productId\": 1, \"quantity\": 1, \"price\": 35000}\n  ],\n  \"notifyWhatsApp\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/orders",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "orders"]
+						},
+						"description": "Crea un pedido desde el admin. `notifyWhatsApp: true` envía mensaje al negocio."
+					},
+					"response": []
+				},
+				{
+					"name": "Cambiar estado (envía email)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"Enviado\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/orders/1/status",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "orders", "1", "status"]
+						},
+						"description": "Cambia el estado del pedido y envía email al cliente.\n\n**Estados:** Pendiente → Procesado → Enviado → Entregado (o Anulado)\n\n**Nota:** No se puede anular un pedido Enviado/Entregado."
+					},
+					"response": []
+				},
+				{
+					"name": "Eliminar pedido",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/orders/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "orders", "1"]
+						},
+						"description": "Elimina pedido (solo Pendiente/Procesado; rechaza Enviado/Entregado)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🎟️ Códigos promocionales (admin)",
+			"description": "CRUD de códigos de descuento. **Requiere auth.** El endpoint de validación es público.",
+			"item": [
+				{
+					"name": "Listar códigos",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/promo-codes",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "promo-codes"]
+						},
+						"description": "Lista códigos promocionales con usos y estado."
+					},
+					"response": []
+				},
+				{
+					"name": "Crear código",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"CROVN-2026\",\n  \"discountPct\": 15,\n  \"maxUses\": 100,\n  \"expiresAt\": \"2026-12-31T23:59:59Z\",\n  \"active\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/promo-codes",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "promo-codes"]
+						},
+						"description": "Crea un código promocional manual.\n- `discountPct`: % de descuento (ej: 15 = 15%)\n- `maxUses`: null = ilimitado\n- `expiresAt`: null = nunca expira"
+					},
+					"response": []
+				},
+				{
+					"name": "Generar código aleatorio",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"discountPct\": 20,\n  \"prefix\": \"CROVN\",\n  \"maxUses\": 50\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/promo-codes/generate",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "promo-codes", "generate"]
+						},
+						"description": "Genera un código aleatorio con formato `CROVN-XXXXXX`."
+					},
+					"response": []
+				},
+				{
+					"name": "Actualizar código",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"discountPct\": 25,\n  \"active\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/promo-codes/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "promo-codes", "1"]
+						},
+						"description": "Actualiza un código promocional."
+					},
+					"response": []
+				},
+				{
+					"name": "Eliminar código",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/promo-codes/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "promo-codes", "1"]
+						},
+						"description": "Elimina un código promocional."
+					},
+					"response": []
+				},
+				{
+					"name": "Enviar código a cliente (email)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"customerId\": 1\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/promo-codes/1/send",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "promo-codes", "1", "send"]
+						},
+						"description": "Envía el código promocional por email a un cliente."
+					},
+					"response": []
+				},
+				{
+					"name": "Validar código (público)",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"CROVN-2026\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/promo-codes/validate",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "promo-codes", "validate"]
+						},
+						"description": "**Público** (no requiere auth). Valida si un código es usable (activo, no expirado, con usos disponibles)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "📰 Publicaciones (admin)",
+			"description": "CRUD de colecciones/noticias/ofertas. **Requiere auth.** El endpoint de publicaciones activas es público.",
+			"item": [
+				{
+					"name": "Listar publicaciones",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/publications",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "publications"]
+						},
+						"description": "Lista todas las publicaciones (inactivas incluidas)."
+					},
+					"response": []
+				},
+				{
+					"name": "Publicaciones activas (público)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/publications/active",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "publications", "active"]
+						},
+						"description": "**Público** (no requiere auth). Retorna publicaciones activas dentro de su rango de fechas, con producto asociado e imágenes."
+					},
+					"response": []
+				},
+				{
+					"name": "Crear publicación (form-data)",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{"key": "title", "value": "Nueva Colección Verano", "type": "text"},
+								{"key": "subtitle", "value": "Estampados tropicales", "type": "text"},
+								{"key": "content", "value": "Descubre nuestra nueva línea...", "type": "text"},
+								{"key": "type", "value": "coleccion", "type": "text", "description": "noticia | coleccion | oferta"},
+								{"key": "image", "value": "", "type": "file", "description": "Imagen (opcional)"},
+								{"key": "publishedAt", "value": "2026-01-01T00:00:00Z", "type": "text", "description": "Fecha inicio (vacío = inmediato)"},
+								{"key": "expiresAt", "value": "2026-12-31T23:59:59Z", "type": "text", "description": "Fecha fin (vacío = permanente)"},
+								{"key": "link", "value": "https://crovn.com", "type": "text", "description": "URL externa (opcional)"},
+								{"key": "productId", "value": "1", "type": "text", "description": "Producto asociado (opcional)"},
+								{"key": "discountPct", "value": "20", "type": "text", "description": "Solo para ofertas: % descuento al producto"},
+								{"key": "active", "value": "true", "type": "text"}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/publications",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "publications"]
+						},
+						"description": "Crea una publicación.\n\n**Tipos:**\n- `noticia`: artículo informativo\n- `coleccion`: colección destacada\n- `oferta`: descuento en producto asociado (`discountPct` 0-90%)\n\n**Layout en landing:**\n- 1 publicación → card grande centrada\n- 2 → 2 columnas centradas\n- 3+ → 3 por renglón"
+					},
+					"response": []
+				},
+				{
+					"name": "Actualizar publicación (form-data)",
+					"request": {
+						"method": "PUT",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{"key": "title", "value": "Nueva Colección Verano", "type": "text"},
+								{"key": "type", "value": "oferta", "type": "text"},
+								{"key": "discountPct", "value": "25", "type": "text"},
+								{"key": "productId", "value": "1", "type": "text"},
+								{"key": "active", "value": "true", "type": "text"},
+								{"key": "image", "value": "", "type": "file"}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/publications/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "publications", "1"]
+						},
+						"description": "Actualiza publicación (imagen opcional; si no se envía, se mantiene la actual)."
+					},
+					"response": []
+				},
+				{
+					"name": "Eliminar publicación",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/publications/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "publications", "1"]
+						},
+						"description": "Elimina una publicación."
+					},
+					"response": []
+				},
+				{
+					"name": "Activar/desactivar publicación",
+					"request": {
+						"method": "PATCH",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/publications/1/toggle",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "publications", "1", "toggle"]
+						},
+						"description": "Alterna el estado activo/inactivo de la publicación."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🏭 Proveedores (admin)",
+			"description": "CRUD de proveedores con costos y ganancia individual por producto. **Requiere auth.**",
+			"item": [
+				{
+					"name": "Listar proveedores",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/suppliers",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "suppliers"]
+						},
+						"description": "Lista proveedores con conteo de productos y ganancia total (suma de price - costPrice de sus productos)."
+					},
+					"response": []
+				},
+				{
+					"name": "Detalle de proveedor (con productos)",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/suppliers/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "suppliers", "1"]
+						},
+						"description": "Retorna proveedor con sus productos (cada uno con costPrice, profitPct y price individuales)."
+					},
+					"response": []
+				},
+				{
+					"name": "Crear proveedor",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Textiles del Valle\",\n  \"contact\": \"Carlos Valle\",\n  \"phone\": \"3128502119\",\n  \"email\": \"carlos@valle.com\",\n  \"address\": \"Cali, Colombia\",\n  \"notes\": \"Pago a 30 días\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/suppliers",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "suppliers"]
+						},
+						"description": "Crea un proveedor (solo datos de contacto; los costos/porcentajes se configuran por producto)."
+					},
+					"response": []
+				},
+				{
+					"name": "Actualizar proveedor",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Textiles del Valle\",\n  \"contact\": \"Carlos Valle\",\n  \"phone\": \"3128502119\",\n  \"active\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/suppliers/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "suppliers", "1"]
+						},
+						"description": "Actualiza datos de contacto del proveedor."
+					},
+					"response": []
+				},
+				{
+					"name": "Aplicar precio a productos",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/suppliers/1/apply",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "suppliers", "1", "apply"]
+						},
+						"description": "Recalcula el precio de venta de los productos del proveedor que tengan costPrice definido (price = costPrice × (1 + profitPct/100))."
+					},
+					"response": []
+				},
+				{
+					"name": "Eliminar proveedor",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/suppliers/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "suppliers", "1"]
+						},
+						"description": "Elimina proveedor (solo si no tiene productos asociados)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🏷️ Categorías (admin)",
+			"description": "Gestión de categorías. **Requiere auth.**",
+			"item": [
+				{
+					"name": "Listar categorías",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/categories",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "categories"]
+						},
+						"description": "Lista categorías con conteo de productos."
+					},
+					"response": []
+				},
+				{
+					"name": "Crear categoría",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Camisetas\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/categories",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "categories"]
+						},
+						"description": "Crea una categoría nueva."
+					},
+					"response": []
+				},
+				{
+					"name": "Eliminar categoría",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+						"url": {
+							"raw": "{{baseUrl}}/api/categories/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "categories", "1"]
+						},
+						"description": "Elimina categoría (solo si no tiene productos)."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{"key": "baseUrl", "value": "http://localhost:4000", "type": "text"},
+		{"key": "token", "value": "", "type": "text", "description": "Token de admin. Ejecuta 'Login' primero y pega el token aquí (o usa Tests en el login para guardarlo automáticamente)."}
+	]
+}

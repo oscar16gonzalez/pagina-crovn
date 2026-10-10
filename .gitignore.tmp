@@ -1,0 +1,6 @@
+{
+  "name": "crovn-backend",
+  "private": true,
+  "version": "1.0.0",
+  "description": "API REST del panel de administración Crovn"
+}
